@@ -11,9 +11,9 @@ const api = axios.create({
 });
 
 export const githubApi = {
-    getRepoFiles: async (repoUrl: string): Promise<ApiResponse<GitHubFile[]>> => {
+    getRepoFiles: async (repoUrl: string, token: string): Promise<ApiResponse<GitHubFile[]>> => {
         try {
-            const response = await api.post('/github/files', { repoUrl });
+            const response = await api.post('/github/files', { repoUrl, token });
             return response.data;
         } catch (error: any) {
             if (axios.isAxiosError(error) && error.response) {
@@ -23,9 +23,9 @@ export const githubApi = {
         }
     },
 
-    getFileContent: async (repoUrl: string, filePath: string): Promise<ApiResponse<string>> => {
+    getFileContent: async (repoUrl: string, filePath: string, token: string): Promise<ApiResponse<string>> => {
         try {
-            const response = await api.post('/github/file-content', { repoUrl, filePath });
+            const response = await api.post('/github/file-content', { repoUrl, filePath, token });
             return response.data;
         } catch (error) {
             if (axios.isAxiosError(error) && error.response) {
@@ -34,4 +34,13 @@ export const githubApi = {
             return { success: false, error: 'Network error occurred' };
         }
     },
+};
+
+export const projectApi = {
+    analyzeProject: async (projectPath: string) => {
+        const response = await axios.post(`${API_BASE_URL}/project/analyze`, {
+            projectPath
+        });
+        return response.data;
+    }
 };

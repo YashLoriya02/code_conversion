@@ -9,6 +9,7 @@ import { Github, Search, AlertCircle, Loader2 } from 'lucide-react';
 
 export default function Home() {
     const [repoUrl, setRepoUrl] = useState('');
+    const [accessToken, setAccessToken] = useState('');
     const [files, setFiles] = useState<GitHubFile[]>([]);
     const [selectedFile, setSelectedFile] = useState<GitHubFile | null>(null);
     const [fileContent, setFileContent] = useState<string>('');
@@ -24,7 +25,7 @@ export default function Home() {
         setFiles([]);
 
         try {
-            const result = await githubApi.getRepoFiles(repoUrl.trim());
+            const result = await githubApi.getRepoFiles(repoUrl.trim(), accessToken.trim());
 
             if (result.success && result.data) {
                 setFiles(result.data);
@@ -43,7 +44,7 @@ export default function Home() {
         setFileContent('Loading...');
 
         try {
-            const result = await githubApi.getFileContent(repoUrl, file.path);
+            const result = await githubApi.getFileContent(repoUrl, file.path, accessToken.trim());
 
             if (result.success && result.data) {
                 setFileContent(result.data);
@@ -91,6 +92,24 @@ export default function Home() {
                                     required
                                     disabled={loading}
                                 />
+                            </div>
+
+                            <div className="my-4">
+                                <label htmlFor="accessToken" className="block text-md font-medium text-gray-100 mb-1 ml-1">
+                                    GitHub Personal Access Token (optional, required only for private repos)
+                                </label>
+                                <input
+                                    type="password"
+                                    id="accessToken"
+                                    value={accessToken}
+                                    onChange={(e) => setAccessToken(e.target.value)}
+                                    placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                                    className="w-full px-4 focus:outline-none py-3 border-2 border-gray-400 rounded-lg"
+                                    disabled={loading}
+                                />
+                                <p className="text-xs text-red-400 mt-1 ml-1">
+                                    Required for private repositories. Generate at: Settings → Developer settings → Personal access tokens
+                                </p>
                             </div>
                         </div>
 

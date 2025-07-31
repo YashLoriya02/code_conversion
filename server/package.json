@@ -13,7 +13,11 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@babel/parser": "^7.28.0",
+    "@babel/traverse": "^7.28.0",
+    "@babel/types": "^7.28.2",
     "@google/generative-ai": "^0.24.1",
+    "babel": "^5.8.38",
     "cors": "^2.8.5",
     "dotenv": "^17.2.0",
     "express": "^5.1.0",
@@ -23,8 +27,10 @@
     "unzipper": "^0.12.3"
   },
   "devDependencies": {
+    "@types/babel__traverse": "^7.20.7",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
+    "@types/fs-extra": "^11.0.4",
     "@types/morgan": "^1.9.10",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.1.0",

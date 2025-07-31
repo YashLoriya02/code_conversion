@@ -2,6 +2,11 @@ import { GitHubFile, GitHubTreeResponse, RepoInfo, ApiResponse } from '../types/
 
 export class GitHubService {
     private baseUrl = 'https://api.github.com';
+    private token?: string;
+
+    constructor(token?: string) {
+        this.token = token;
+    }
 
     parseGitHubUrl(url: string): RepoInfo | null {
         try {
@@ -20,16 +25,31 @@ export class GitHubService {
         }
     }
 
+    private getHeaders() {
+        const headers: Record<string, string> = {
+            'Accept': 'application/vnd.github.v3+json',
+            'User-Agent': 'GitHub-Repo-Explorer'
+        };
+
+        if (this.token) {
+            headers['Authorization'] = `token ${this.token}`;
+        }
+
+        return headers;
+    }
+
     async getAllFiles(repoInfo: RepoInfo): Promise<ApiResponse<GitHubFile[]>> {
         try {
             const treeUrl = `${this.baseUrl}/repos/${repoInfo.owner}/${repoInfo.repo}/git/trees/${repoInfo.branch}?recursive=1`;
 
-            const response = await fetch(treeUrl, {
-                headers: {
-                    'Accept': 'application/vnd.github.v3+json',
-                    'User-Agent': 'GitHub-Repo-Explorer'
-                }
-            });
+            // const response = await fetch(treeUrl, {
+            //     headers: {
+            //         'Accept': 'application/vnd.github.v3+json',
+            //         'User-Agent': 'GitHub-Repo-Explorer'
+            //     }
+            // });
+
+            const response = await fetch(treeUrl, { headers: this.getHeaders() });
 
             if (!response.ok) {
                 if (response.status === 404) {
@@ -72,12 +92,14 @@ export class GitHubService {
         try {
             const contentUrl = `${this.baseUrl}/repos/${repoInfo.owner}/${repoInfo.repo}/contents/${filePath}?ref=${repoInfo.branch}`;
 
-            const response = await fetch(contentUrl, {
-                headers: {
-                    'Accept': 'application/vnd.github.v3+json',
-                    'User-Agent': 'GitHub-Repo-Explorer'
-                }
-            });
+            // const response = await fetch(contentUrl, {
+            //     headers: {
+            //         'Accept': 'application/vnd.github.v3+json',
+            //         'User-Agent': 'GitHub-Repo-Explorer'
+            //     }
+            // });
+
+            const response = await fetch(contentUrl, { headers: this.getHeaders() });
 
             if (!response.ok) {
                 return { success: false, error: `Failed to fetch file content: ${response.statusText}` };

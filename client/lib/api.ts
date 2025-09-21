@@ -44,3 +44,8 @@ export const projectApi = {
         return response.data;
     }
 };
+
+export const getProfile = async (id: string) => {
+    const response = await api.get(`/auth/profile/${id}`);
+    return response.data;
+};

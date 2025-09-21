@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { GitHubFile } from '../../types/github';
-import { githubApi } from '../../lib/api';
+import { getProfile, githubApi } from '../../lib/api';
 import FileList from '../../components/FileList';
 import FileViewer from '../../components/FileViewer';
-import { Github, Search, AlertCircle, Loader2 } from 'lucide-react';
+import { Github, Search, AlertCircle, Loader2, User, LogOut } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 
 export default function Home() {
     const [repoUrl, setRepoUrl] = useState('');
@@ -15,6 +17,36 @@ export default function Home() {
     const [fileContent, setFileContent] = useState<string>('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string>('');
+
+    const params = useSearchParams();
+    const router = useRouter();
+    const id = params.get('id');
+
+    useEffect(() => {
+        const fetchUser = async () => {
+            try {
+                const data = await getProfile(id ?? '');
+
+                localStorage.setItem('session-id', data._id);
+                localStorage.setItem('session-gname', data.username);
+
+                if (id) {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete('id');
+                    window.history.replaceState({}, document.title, url);
+                }
+            } catch (err) {
+                console.log("Error in fetching data")
+            }
+        };
+
+        if (!localStorage.getItem('session-id') && id) {
+            fetchUser();
+        }
+        else {
+            router.push("/")
+        }
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -61,8 +93,31 @@ export default function Home() {
         setFileContent('');
     };
 
+    const handleLogout = async () => {
+        try {
+            localStorage.removeItem("session-id")
+            localStorage.removeItem("session-gname")
+            router.push('/');
+        } catch (err) {
+            setError('Logout failed.');
+        }
+    };
+
+
     return (
         <main className="min-h-screen bg-gray-800">
+            <div className='absolute top-5 right-5 flex gap-3 items-center'>
+                <Link href={'/profile'} className='flex gap-3 items-center bg-[#1b1717b4] px-4 py-3 rounded-2xl'>
+                    <User className='h-5 w-5' />
+                </Link>
+
+                <button
+                    onClick={handleLogout}
+                    className="bg-[#1b1717b4] cursor-pointer text-white py-3 px-4 rounded-2xl flex items-center gap-2"
+                >
+                    <LogOut className="w-5 h-5" />
+                </button>
+            </div>
             <div className="container mx-auto px-4 py-8">
                 <div className="text-center mb-8">
                     <div className="flex items-center justify-center space-x-2 mb-4">

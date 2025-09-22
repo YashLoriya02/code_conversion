@@ -2,6 +2,13 @@ import { Request, Response } from 'express';
 import { GitHubService } from '../services/githubService';
 import axios from 'axios';
 import User from '../models/auth.model';
+import { Buffer } from "buffer";
+
+type NewFile = {
+    path: string;
+    content: string;
+    message?: string;
+};
 
 export class GitHubController {
     getRepoFiles = async (req: Request, res: Response): Promise<void> => {
@@ -66,13 +73,44 @@ export class GitHubController {
         }
     };
 
+    // Helper to create/update file 
+    upsertFile = async (opts: {
+        gh: any;
+        owner: string;
+        repo: string;
+        branch: string;
+        path: string;
+        content: string;
+        message: string;
+    }) => {
+        const { gh, owner, repo, branch, path, content, message } = opts;
+
+        let sha: string | undefined;
+        try {
+            const getRes = await gh.get(`/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`, {
+                params: { ref: branch },
+                validateStatus: (s: number) => s === 200 || s === 404
+            });
+            if (getRes.status === 200 && getRes.data?.sha) {
+                sha = getRes.data.sha;
+            }
+        } catch (_) { }
+
+        const contentB64 = Buffer.from(content, "utf8").toString("base64");
+        const body: any = { message, content: contentB64, branch };
+        if (sha) body.sha = sha;
+
+        await gh.put(`/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`, body);
+    }
+
     createRepo = async (req: Request, res: Response): Promise<void> => {
         try {
             const { id } = req.params;
             const {
                 name,
                 description = '',
-                private: isPrivate = false
+                private: isPrivate = false,
+                files = [] as NewFile[],
             } = req.body || {};
 
             if (!name) {
@@ -98,6 +136,7 @@ export class GitHubController {
             });
 
             const who = await gh.get('/user');
+            const login: string = who.data?.login;
             const scopes = who.headers['x-oauth-scopes'] || '';
 
             if (isPrivate && !String(scopes).includes('repo')) {
@@ -116,19 +155,50 @@ export class GitHubController {
                 return
             }
 
-            const { data } = await gh.post('/user/repos', {
-                name,
-                description,
-                private: !!isPrivate,
-                auto_init: true
+            let repoResp = await gh.get(`/repos/${login}/${encodeURIComponent(name)}`, {
+                validateStatus: (s: number) => s === 200 || s === 404
             });
 
-            res.status(201).json({
-                message: 'Repository created',
-                full_name: data.full_name,
-                html_url: data.html_url,
-                clone_url: data.clone_url,
-                private: data.private,
+            if (repoResp.status === 404) {
+                repoResp = await gh.post("/user/repos", {
+                    name,
+                    description,
+                    private: !!isPrivate,
+                    auto_init: true
+                });
+            }
+
+            const repo = repoResp.data;
+            const owner = repo.owner?.login || login;
+            const repoName: string = repo.name;
+            const defaultBranch: string = repo.default_branch || "main";
+
+            const addedOrUpdated: string[] = [];
+            for (const f of files) {
+                if (!f?.path || typeof f.content !== "string") continue;
+                await this.upsertFile({
+                    gh,
+                    owner,
+                    repo: repoName,
+                    branch: defaultBranch,
+                    path: f.path,
+                    content: f.content,
+                    message: f.message || `Add/Update ${f.path}`
+                });
+                addedOrUpdated.push(f.path);
+            }
+
+            res.status(200).json({
+                message:
+                    repoResp.status === 200
+                        ? "Repo existed; files added/updated"
+                        : "Repo created; files added",
+                full_name: repo.full_name,
+                html_url: repo.html_url,
+                clone_url: repo.clone_url,
+                private: repo.private,
+                default_branch: defaultBranch,
+                files: addedOrUpdated
             });
         } catch (e: any) {
             const status = e?.response?.status || 500;

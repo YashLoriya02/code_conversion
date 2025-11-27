@@ -28,11 +28,11 @@ export class GitHubService {
     private getHeaders() {
         const headers: Record<string, string> = {
             'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'GitHub-Repo-Explorer'
+            'User-Agent': 'GitHub-Repo-Explorer',
         };
 
         if (this.token) {
-            headers['Authorization'] = `token ${this.token}`;
+            headers['Authorization'] = `Bearer ${this.token}`;
         }
 
         return headers;
@@ -43,7 +43,6 @@ export class GitHubService {
             const treeUrl = `${this.baseUrl}/repos/${repoInfo.owner}/${repoInfo.repo}/git/trees/${repoInfo.branch}?recursive=1`;
 
             const response = await fetch(treeUrl, { headers: this.getHeaders() });
-
             if (!response.ok) {
                 if (response.status === 404) {
                     return { success: false, error: 'Repository not found or Private Repository' };

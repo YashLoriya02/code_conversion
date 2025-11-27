@@ -28,7 +28,7 @@ const CodeConversion = () => {
     setConvertedCode('');
 
     try {
-      const response = await fetch('http://localhost:5000/api/conversion/convert/code', {
+      const response = await fetch('http://localhost:5000/api/conversion/code', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -39,7 +39,7 @@ const CodeConversion = () => {
       const data = await response.json();
 
       if (response.ok) {
-        setConvertedCode(data.convertedCode);
+        setConvertedCode(data.data.convertedCode);
       } else {
         setError(data.error || 'Something went wrong!');
       }

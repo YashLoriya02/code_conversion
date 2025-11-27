@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { LLMConversionService } from '../services/llmConversionService';
 import { GitHubService } from '../services/githubService';
 import { MainConversionService } from '../services/mainConversionService';
+import User from "../models/auth.model"
 
 export class ConversionController {
     private llmConversionService: LLMConversionService;
@@ -12,113 +13,67 @@ export class ConversionController {
         this.githubService = new GitHubService();
     }
 
-    // convertComponent = async (req: Request, res: Response): Promise<void> => {
-    //     try {
-    //         const { repoUrl, token, componentName, filePath } = req.body;
-
-    //         const repoInfo = this.githubService.parseGitHubUrl(repoUrl);
-    // if (!repoInfo) {
-    //     res.status(400).json({ success: false, error: 'Invalid GitHub URL' });
-    //     return;
-    // }
-
-    //         const githubService = new GitHubService(token);
-
-    //         // Get file content
-    //         const contentResult = await githubService.getFileContent(repoInfo, filePath);
-    //         if (!contentResult.success || !contentResult.data) {
-    //             res.status(400).json({ success: false, error: 'Failed to fetch file content' });
-    //             return;
-    //         }
-
-    //         const allFiles = await githubService.getAllFiles(repoInfo);
-
-    //         const parsedProject = await this.fileParserService.parseProject(allFiles.data);
-    //         const component = parsedProject.components.find(c => c.name === componentName);
-
-    //         if (component) {
-    //             const analysis = this.conversionStrategyService.analyzeProject(parsedProject);
-    //             const strategy = analysis.conversionStrategies.find(s => s.componentName === componentName);
-
-    //             if (strategy) {
-    //                 // Use intelligent conversion
-    //                 const result = await this.llmConversionService.convertComponent(
-    //                     component,
-    //                     strategy,
-    //                     contentResult.data
-    //                 );
-
-    //                 res.json({ success: true, data: result });
-    //                 return;
-    //             }
-    //         }
-
-    //         // Fallback to basic conversion
-    //         const convertedCode = await this.llmConversionService.convertReactCodeToReactNative(contentResult.data);
-
-    // res.json({
-    //     success: true,
-    //     data: {
-    //         originalCode: contentResult.data,
-    //         convertedCode,
-    //         changes: ['Basic React to React Native conversion applied'],
-    //         warnings: ['Component analysis not available - basic conversion used'],
-    //         success: true,
-    //         confidence: 75
-    //     }
-    // });
-
-    //     } catch (error) {
-    //         res.status(500).json({
-    //             success: false,
-    //             error: error instanceof Error ? error.message : 'Conversion failed'
-    //         });
-    //     }
-    // };
-
     convertComponent = async (req: Request, res: Response): Promise<void> => {
         try {
-            const { repoUrl, token, userId } = req.body;
+            const { repoUrl, userId } = req.body;
+
+            const user = await User.findById(userId);
+            const token = user?.accessToken;
+
+            if (!token) {
+                res.status(401).json({
+                    success: false,
+                    error: 'GitHub access token not found for user',
+                });
+                return;
+            }
 
             const repoInfo = this.githubService.parseGitHubUrl(repoUrl);
+
             if (!repoInfo) {
                 res.status(400).json({ success: false, error: 'Invalid GitHub URL' });
                 return;
             }
 
             const githubService = new GitHubService(token);
-            const allFiles = await githubService.getAllFiles(repoInfo);
-            const conversionService = new MainConversionService(token); 
+            const allFilesResponse = await githubService.getAllFiles(repoInfo);
 
-            const manifest = await conversionService.createConversionManifest(allFiles.data);
+            if (!allFilesResponse.success || !allFilesResponse.data) {
+                res.status(400).json({
+                    success: false,
+                    error: allFilesResponse.error || 'Failed to fetch repository files',
+                });
+                return;
+            }
 
+            const allFiles = allFilesResponse.data;
+
+            const conversionService = new MainConversionService(token);
+            const manifest = await conversionService.createConversionManifest(allFiles);
             const completedManifest = await conversionService.runParallelConversion(manifest);
 
-            const projectZipBuffer = await conversionService.assembleProject(completedManifest);
+            const { zipBuffer, report, summary } =
+                await conversionService.assembleProject(completedManifest);
 
-            res.setHeader('Content-Type', 'application/zip');
-            res.setHeader('Content-Disposition', `attachment; filename=${repoInfo.repo}.zip`);
-            res.send(projectZipBuffer);
+            const zipBase64 = zipBuffer.toString('base64');
 
-            // res.json({
-            //     success: true,
-            //     data: {
-            //         originalCode: "contentResult.data",
-            //         convertedCode: "",
-            //         changes: ['Basic React to React Native conversion applied'],
-            //         warnings: ['Component analysis not available - basic conversion used'],
-            //         success: true,
-            //         confidence: 75
-            //     }
-            // });
+            res.json({
+                success: true,
+                data: {
+                    fileName: `${repoInfo.repo}-react-native.zip`,
+                    zipBase64,
+                    report,
+                    summary,
+                },
+            });
         } catch (error) {
-            console.log(error)
+            console.error(error);
             res.status(500).json({
                 success: false,
-                error: error instanceof Error ? error.message : 'Conversion failed'
+                error: error instanceof Error ? error.message : 'Conversion failed',
             });
         }
-    }
+    };
 
     convertCode = async (req: Request, res: Response): Promise<void> => {
         try {
@@ -144,6 +99,7 @@ export class ConversionController {
             });
 
         } catch (error) {
+            console.log(error)
             res.status(500).json({
                 success: false,
                 error: error instanceof Error ? error.message : 'Conversion failed'

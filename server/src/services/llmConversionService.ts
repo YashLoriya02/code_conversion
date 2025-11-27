@@ -30,14 +30,19 @@ export class LLMConversionService {
     }
 
     // Final one for paraller conversion with context
-    public async convertCodeWithContext(sourceCode: string, fileType: FileType): Promise<string> {
+    public async convertCodeWithContext(sourceCode: string, fileType: FileType): Promise<ConversionResult> {
         const model = this.genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         const prompt = this.buildFullProjectConversionPrompt(sourceCode, fileType);
-        
+
         const result = await model.generateContent(prompt);
         let response = result.response.text().trim();
-        
-        return this.cleanGeminiResponse(response);
+
+        // return this.cleanGeminiResponse(response);
+        response = this.cleanGeminiResponse(response);
+
+        // Reuse your existing parser
+        return this.parseConversionResult(response, sourceCode);
+
     }
 
     // Older one for single component conversion
@@ -81,44 +86,58 @@ export class LLMConversionService {
 
         return this.cleanGeminiResponse(response);
     }
-    
+
     // Helpers
     private buildFullProjectConversionPrompt(code: string, fileType: FileType): string {
-        const contextInstruction = `This file was identified as a '${fileType}'. Pay special attention to its role. For example, a 'PAGE' should become a full React Native screen, possibly wrapped in a SafeAreaView. A 'UTIL' file might contain browser-specific APIs that need replacement. An 'ASSET' should be imported using an \`Image\` component.`;
+        const contextInstruction = `This file was identified as a '${fileType}'. Pay special attention to its role. For example, a 'PAGE' should become a full React Native screen, possibly wrapped in a SafeAreaView and integrated with navigation. A 'COMPONENT' should remain a reusable UI piece. A 'HOOK' or 'UTIL' file might contain browser-specific APIs that need replacement. An 'ASSET' should be imported using an Image component or appropriate React Native asset handling.`;
 
         return `
-You are an expert React Native developer. Convert the provided React code to React Native code.
+You are an expert React Native developer. Convert the provided React (web) code to idiomatic, production-ready React Native code.
 
-## CONTEXT:
+## CONTEXT
 ${contextInstruction}
 
-## COMPREHENSIVE CONVERSION RULES:
-[Your detailed rules from buildIntelligentConversionPrompt go here - e.g., Element Conversions, Style Conversions, etc.]
+The goal is to produce code that **actually runs in React Native** (no DOM, no browser-only APIs, no web-only libraries). Prefer clean, minimal, maintainable patterns.
 
-## OUTPUT REQUIREMENTS:
-- Return ONLY the converted code.
-- No markdown formatting, backticks, or explanatory text.
-- Ensure all necessary React and React Native imports are included.
+---
 
-## COMPREHENSIVE CONVERSION RULES:
+## HIGH-LEVEL BEHAVIOUR
 
-### Element Conversions:
+- Preserve core **logic and structure** (state, hooks, props, business logic).
+- Replace **web-only concepts** with correct React Native equivalents.
+- Make sure the output is **syntactically valid** and imports all required symbols.
+- If something cannot be converted safely, **remove it from code** and report it in WARNINGS.
+
+---
+
+## ELEMENT CONVERSIONS
+
+Translate JSX elements as follows:
+
 - <div> → <View>
 - <span> → <Text>
-- <h1>, <h2>, <h3>, <h4>, <h5>, <h6> → <Text> with appropriate fontSize
+- <h1>–<h6> → <Text> with appropriate style (e.g. fontSize, fontWeight)
 - <p> → <Text>
-- <button> → <TouchableOpacity> with <Text> child
+- <button> → <TouchableOpacity> wrapping a <Text> label
 - <input> → <TextInput>
+- <textarea> → <TextInput multiline />
 - <img> → <Image>
-- <a> → <TouchableOpacity> with <Text> child + Linking for external URLs
-- <ul>, <ol> → <FlatList> or <View> with custom list implementation
-- <li> → <View> with <Text>
-- <form> → <View>
+- <a> (for links) → <TouchableOpacity> with <Text> child + Linking.openURL for external URLs
+- <ul>, <ol> → <View> or <FlatList> with custom list items
+- <li> → <View> + <Text>
+- <form> → <View> + manual handlers (no native form events)
 - <label> → <Text>
 
-### Style Conversions:
-- Convert all CSS classes to StyleSheet objects
-- Transform CSS properties to React Native equivalents:
+For layout:
+- Prefer <View> + flexbox over semantic tags.
+- Use <ScrollView> when web code expects scrolling containers.
+
+---
+
+## STYLE CONVERSIONS
+
+- Convert all CSS classes and inline styles into **StyleSheet.create** objects.
+- CSS → JS style props:
   - margin-top → marginTop
   - background-color → backgroundColor
   - font-size → fontSize
@@ -128,46 +147,132 @@ ${contextInstruction}
   - flex-direction → flexDirection
   - align-items → alignItems
   - justify-content → justifyContent
-- Remove unsupported properties (box-shadow, etc.)
-- Convert px units to numbers
-- Use flexbox for layouts
+- Remove or simplify unsupported properties:
+  - box-shadow, filter, complex gradients, etc.
+  - If critical visually, approximate with elevation, border, backgroundColor, etc.
+- Convert pixel values (e.g. "16px") to numeric values (e.g. 16).
+- Remove direct imports of CSS/SCSS files (e.g. \`import "./index.css"\`) and migrate styles into JS.
 
-### Import Statements:
-- Always import React from 'react'
-- Import required React Native components: View, Text, TouchableOpacity, TextInput, Image, StyleSheet, ScrollView, SafeAreaView, FlatList, etc.
-- Add Platform import if platform-specific code is needed
-- Import Linking for external URLs
+---
 
-### Event Handling:
-- onClick → onPress
-- onChange → onChangeText (for TextInput)
-- onSubmit → handle with onPress
-- Remove browser-specific events
+## IMPORT & MODULE HANDLING
 
-### Unsupported Features Replacement:
-- Replace localStorage with AsyncStorage (import from '@react-native-async-storage/async-storage')
-- Replace window/document APIs with appropriate React Native equivalents
-- Convert CSS animations to Animated API or react-native-reanimated
-- Replace fetch with React Native fetch (built-in)
+- Always import React from 'react' when needed.
+- Import required React Native components:
+  - From 'react-native': View, Text, SafeAreaView, ScrollView, Image, TouchableOpacity, TextInput, FlatList, StyleSheet, Platform, Linking, etc. **only what is used**.
+- Do NOT import any DOM libraries like 'react-dom'.
+- Remove any references to \`document\`, \`window\`, \`navigator\`, \`HTMLElement\`, etc. Replace them with React Native equivalents or remove + warn.
+- If fileType is:
+  - 'PAGE': export a screen-like component (e.g. \`export default function ScreenName(){...}\`) wrapped in SafeAreaView or ScrollView if needed.
+  - 'HOOK' / 'UTIL': keep the same exported hook / helper names, but remove browser-specific APIs.
+  - 'ASSET': this file usually should NOT be JS – warn if the code implies web-only asset handling.
 
-## OUTPUT FORMAT:
-Provide your response in this EXACT format:
+---
+
+## EVENT & INTERACTION CONVERSION
+
+- onClick → onPress (TouchableOpacity, Pressable, etc.)
+- onChange for inputs:
+  - TextInput: onChangeText={(value) => ...}
+- form events (onSubmit, onSubmitCapture) → manual handler (e.g. onPress on a button) that triggers the submit logic.
+- Prevent usage of any DOM event types or event properties that do not exist in React Native.
+
+---
+
+## UNSUPPORTED LIBRARIES & PATTERNS (CRITICAL)
+
+### Browser / DOM / Web-only libraries
+
+- Remove imports from:
+  - 'react-dom'
+  - 'react-router-dom' (use React Navigation patterns instead; if not obvious, remove router usage and add WARNINGS)
+  - 'react-hot-toast'
+  - Any library that clearly depends on the DOM or window/document.
+- For these:
+  - Either replace with a React Native alternative, OR
+  - Remove from code and mention in WARNINGS exactly what was removed and why.
+
+### Recommended replacements
+
+- \`react-hot-toast\`:
+  - Remove this import and its usage entirely, OR
+  - Replace with \`react-native-toast-message\`:
+    - \`import Toast from "react-native-toast-message";\`
+    - Place <Toast /> at the root and use Toast.show(...) instead of toast().
+- \`react-router-dom\`:
+  - If navigation structure is simple, prefer React Navigation
+    (\`@react-navigation/native\`, \`@react-navigation/native-stack\`), but if that is too complex to infer reliably, remove the router usage and add a clear WARNING.
+- Any window/document usage:
+  - Replace common patterns like window.innerWidth or scrollTo with Platform APIs, Dimensions, or remove and warn.
+
+Never leave browser-only APIs or web-only imports in the final React Native code.
+
+---
+
+## STATE, HOOKS & LOGIC
+
+- Preserve hooks: useState, useEffect, useContext, useMemo, useCallback, useRef, etc. – they work in React Native.
+- Preserve business logic and data flow.
+- For custom hooks from other files, keep the imports as-is (relative paths) but assume those files are also converted.
+
+---
+
+## NETWORKING & STORAGE
+
+- \`fetch\` is available in React Native; keep it, but remove any browser-specific fetch options that are not supported.
+- Replace:
+  - localStorage/sessionStorage → AsyncStorage (from '@react-native-async-storage/async-storage') or other RN storage.
+- Add clear WARNINGS when storage logic was significantly changed.
+
+---
+
+## FILE-TYPE SPECIFIC BEHAVIOUR
+
+- 'PAGE':
+  - Treat as a screen component.
+  - Prefer default export of a function component.
+  - Wrap content in SafeAreaView and/or ScrollView when content scrolls.
+- 'COMPONENT':
+  - Keep reusable, presentational logic.
+- 'HOOK':
+  - Keep hook signature; ensure no DOM usage.
+- 'UTIL':
+  - Keep functions but remove/replace any browser globals.
+- 'STYLESHEET':
+  - Convert CSS modules or plain CSS into StyleSheet objects referenced by components.
+- 'CONFIG' / 'OTHER':
+  - Preserve config shape but remove node/web-specific APIs that don’t exist on React Native.
+
+---
+
+## OUTPUT FORMAT (STRICT)
+
+Return your response **in this exact structure**:
 
 CONVERTED_CODE:
-[converted code here - no backticks, no markdown]
+[converted code here - ONLY valid React Native/JS/TS code, no backticks, no markdown]
 
 CHANGES_MADE:
-- [specific change 1]
-- [specific change 2]
+- [specific change 1, e.g. "Replaced <div> with <View> and added flex styles"]
+- [specific change 2, e.g. "Removed react-hot-toast and added Toast from react-native-toast-message"]
 - [etc...]
 
 WARNINGS:
-- [any potential issues or manual review needed]
+- [any potential issues or manual review needed, e.g. "Removed window.scrollTo because it's not supported in React Native"]
+- [etc...]
 
 CONFIDENCE_SCORE: [0-100]
 
-## ORIGINAL CODE TO CONVERT:
-${code}`;
+Rules:
+- In the CONVERTED_CODE section, include **only** the final code (no comments describing your reasoning).
+- CHANGES_MADE and WARNINGS must be bullet lists with "-" at the start of each item.
+- CONFIDENCE_SCORE is a single integer from 0 to 100.
+
+---
+
+## ORIGINAL CODE TO CONVERT
+${code}
+`;
     }
 
     private buildIntelligentConversionPrompt(

@@ -33,7 +33,7 @@ passport.deserializeUser(async (id: string, done) => {
     }
 });
 
-export const githubLogin = passport.authenticate('github', { scope: ['public_repo'] });
+export const githubLogin = passport.authenticate('github', { scope: ['repo'] });
 
 export const githubCallback = (req: Request, res: Response) => {
     if (!req.user) {

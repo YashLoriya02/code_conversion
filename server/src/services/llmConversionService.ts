@@ -24,14 +24,14 @@ export class LLMConversionService {
     }
 
     public async generateText(prompt: string): Promise<string> {
-        const model = this.genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
         const result = await model.generateContent(prompt);
         return this.cleanGeminiResponse(result.response.text());
     }
 
     // Final one for paraller conversion with context
     public async convertCodeWithContext(sourceCode: string, fileType: FileType): Promise<ConversionResult> {
-        const model = this.genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
         const prompt = this.buildFullProjectConversionPrompt(sourceCode, fileType);
 
         const result = await model.generateContent(prompt);
@@ -52,7 +52,7 @@ export class LLMConversionService {
         originalCode: string
     ): Promise<ConversionResult> {
         try {
-            const model = this.genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+            const model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
             const prompt = this.buildIntelligentConversionPrompt(componentInfo, strategy, originalCode);
 
@@ -77,7 +77,7 @@ export class LLMConversionService {
 
     // Code conversion
     async convertReactCodeToReactNative(text: string): Promise<string> {
-        const model = this.genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
         const prompt = this.buildBasicConversionPrompt(text);
 
